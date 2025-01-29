@@ -9,9 +9,6 @@ GLOBAL_PROVIDER_CONFIG="${CONFIG_PATH}/provider.tf"
 GLOBAL_TAGS_CONFIG="${CONFIG_PATH}/tags.tf"
 
 
-# Project Name
-PROJECT_NAME=$(basename "$(pwd)")
-echo "Project name: $PROJECT_NAME"
 
 # Commands that need backend configuration
 BACKEND_COMMANDS=(
@@ -55,6 +52,10 @@ NEW_ARGS=()
 for arg in "$@"; do
     if [[ "$arg" == -chdir=* ]]; then
         WORKING_DIR=$(realpath "${arg#-chdir=}")  # Extract value after -chdir=
+        if [[ ! -d "$WORKING_DIR" ]]; then
+            echo "Error: Specified -chdir directory '$WORKING_DIR' does not exist."
+            exit 1
+        fi
     else
         NEW_ARGS+=("$arg")  # Keep all other arguments
     fi
@@ -62,6 +63,9 @@ done
 # Create temporary working directory for symlinks
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
+project_name=$(basename $WORKING_DIR)
+echo "Project name: $project_name"
+
 
 # Link .tf files from working directory to temp directory
 for file in "$WORKING_DIR"/*.tf; do
@@ -88,7 +92,7 @@ if [ -f "$GLOBAL_BACKEND_HCL" ]; then
     if [ "$BACKEND_TYPE" = "bucket" ]; then
 
         BACKEND_TYPE="s3"
-        sed -i "s/PROJECT/${PROJECT_NAME}/g" "$GLOBAL_BACKEND_HCL"
+        sed -i "s/PROJECT/${project_name}/g" "$GLOBAL_BACKEND_HCL"
     else
         BACKEND_TYPE="local"  # default to local if type cannot be determined
     fi
@@ -97,7 +101,7 @@ if [ -f "$GLOBAL_BACKEND_HCL" ]; then
     cat > "$TEMP_DIR/backend.tf" << EOF
 terraform {
   backend "$BACKEND_TYPE" {
-        key="$PROJECT_NAME/state/terraform.tfstate"
+        key="$project_name/state/terraform.tfstate"
 }
 }
 EOF
@@ -109,7 +113,6 @@ terraform {
 }
 EOF
 fi
-
 # Change to temporary directory
 cd "$TEMP_DIR" || exit 1
 # Check if we need to add backend configuration
