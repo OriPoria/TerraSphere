@@ -64,7 +64,7 @@ tfs --help
 
 ### Configuration
 
-TerraSphere supports customizable paths for global configurations via the `TFCONFIGPATH` environment variable. If not set, the default path is `$HOME/.terraform`.
+TerraSphere supports customizable paths for global configurations via the `TFSCONFIGPATH` environment variable. If not set, the default path is `$HOME/.terraform`.
 
 #### Global Configuration Files
 

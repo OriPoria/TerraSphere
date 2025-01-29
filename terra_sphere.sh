@@ -1,11 +1,10 @@
 #!/bin/bash
 
 # Set config path based on environment variable
-CONFIG_PATH="${TFCONFIGPATH:-$HOME/.terraform}"
+CONFIG_PATH="${TFSCONFIGPATH:-$HOME/.terraform}"
 
 # Configuration
 GLOBAL_BACKEND_HCL="${CONFIG_PATH}/backend.hcl"
-GLOBAL_BACKEND_TF="${CONFIG_PATH}/backend.tf"
 GLOBAL_PROVIDER_CONFIG="${CONFIG_PATH}/provider.tf"
 GLOBAL_TAGS_CONFIG="${CONFIG_PATH}/tags.tf"
 
@@ -37,7 +36,6 @@ needs_backend() {
     done
     return 1
 }
-
 # Check if help is needed
 if [ "$1" == "-h" ] || [ "$1" == "--help" ] || [ -z "$1" ]; then
     show_usage
@@ -48,16 +46,30 @@ fi
 TF_COMMAND="$1"
 shift  # Remove the command from the arguments
 
+# Default to current directory
+WORKING_DIR=$(pwd)
+
+NEW_ARGS=()
+
+
+for arg in "$@"; do
+    if [[ "$arg" == -chdir=* ]]; then
+        WORKING_DIR=$(realpath "${arg#-chdir=}")  # Extract value after -chdir=
+    else
+        NEW_ARGS+=("$arg")  # Keep all other arguments
+    fi
+done
 # Create temporary working directory for symlinks
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-# Link current directory contents to temp directory
-for file in *; do
-    if [ -e "$file" ] && [ "$file" != "backend.tf" ]; then  # Don't link local backend.tf if it exists
-        ln -s "$(pwd)/$file" "$TEMP_DIR/"
+# Link .tf files from working directory to temp directory
+for file in "$WORKING_DIR"/*.tf; do
+    if [[ -e "$file" ]] && [[ "$(basename "$file")" != "backend.tf" ]]; then
+        ln -s "$file" "$TEMP_DIR/"
     fi
 done
+
 
 # Link global configurations if they exist
 if [ -f "$GLOBAL_PROVIDER_CONFIG" ]; then
@@ -100,30 +112,29 @@ fi
 
 # Change to temporary directory
 cd "$TEMP_DIR" || exit 1
-
 # Check if we need to add backend configuration
 if needs_backend "$TF_COMMAND"; then
     if [ -f "$GLOBAL_BACKEND_HCL" ]; then
         case "$TF_COMMAND" in
             "init")
-                terraform init -backend-config="$GLOBAL_BACKEND_HCL" "$@"
+                terraform init -backend-config="$GLOBAL_BACKEND_HCL" "${NEW_ARGS[@]}"
                 ;;
             "import"|"state"|"refresh"|"force-unlock"|"workspace")
                 # Ensure backend is initialized first
                 terraform init -backend-config="$GLOBAL_BACKEND_HCL" -input=false > /dev/null
-                terraform "$TF_COMMAND" "$@"
+                terraform "$TF_COMMAND" "${NEW_ARGS[@]}"
                 ;;
             *)
                 # For other commands that need backend but don't take backend-config directly
                 terraform init -backend-config="$GLOBAL_BACKEND_HCL" -input=false > /dev/null
-                terraform "$TF_COMMAND" "$@"
+                terraform "$TF_COMMAND" "${NEW_ARGS[@]}"
                 ;;
         esac
     else
         # No backend config, just use local backend
-        terraform "$TF_COMMAND" "$@"
+        terraform "$TF_COMMAND" "${NEW_ARGS[@]}"
     fi
 else
     # For commands that don't need backend config, just pass through
-    terraform "$TF_COMMAND" "$@"
+    terraform "$TF_COMMAND" "${NEW_ARGS[@]}"
 fi
