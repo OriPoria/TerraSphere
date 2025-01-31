@@ -21,6 +21,7 @@ BACKEND_COMMANDS=(
     "plan"
     "apply"
     "destroy"
+    "output"
 )
 
 # Function to check if command needs backend config
@@ -67,13 +68,20 @@ project_name=$(basename $WORKING_DIR)
 echo "Project name: $project_name"
 
 
-# Link .tf files from working directory to temp directory
-for file in "$WORKING_DIR"/*.tf; do
-    if [[ -e "$file" ]] && [[ "$(basename "$file")" != "backend.tf" ]]; then
-        ln -s "$file" "$TEMP_DIR/"
+# Find all files and directories under WORKING_DIR except 'backend.tf'
+find "$WORKING_DIR" -mindepth 1 ! -name 'backend.tf' -print0 | while IFS= read -r -d '' file; do
+    # Create symbolic link in TEMP_DIR, maintaining structure
+    relative_path="${file#$WORKING_DIR/}"  # Get relative path
+    target_path="$TEMP_DIR/$relative_path"
+
+    if [[ -d "$file" ]]; then
+        # If it's a directory, create it in TEMP_DIR
+        mkdir -p "$target_path"
+    else
+        # If it's a file, create a symlink
+        ln -s "$file" "$target_path"
     fi
 done
-
 
 # Link global configurations if they exist
 if [ -f "$GLOBAL_PROVIDER_CONFIG" ]; then
